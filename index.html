@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <header>
+    <title>wsm</title>
+    <style>
+      h1 {
+	  text-align: center;
+      }
+      
+      #ChatView {
+	  margin-left: 12%;
+	  margin-right: 12%;
+	  margin-top: 2%;
+	  margin-bottom: 3%;
+      }
+      
+      textarea {
+	  color: black;
+	  border: 2px solid gold;
+	  width: 100%;
+	  height: 80vh;
+	  resize: none;
+      }
+
+      input[type=text] {
+	  width: 80%;
+      }
+
+      input[type=submit] {
+	  border: none;
+	  background-color: #abef00;
+	  color: #1a2a3a;
+	  width: 14%;
+	  margin: 2px 2px;
+	  padding: 8px 8px;
+      }
+    </style>
+  </header>
+  <body>
+    <h1>WSM</h1>
+    <div id="ChatView">
+      <textarea id="MsgBox" name="MsgBox" disabled></textarea>
+      <input id="input" type="text"/>
+      <input type="submit" onclick="submit()"/>
+    </div>
+    
+    <script>
+      let msgBox = document.getElementById("MsgBox"),
+	  input = document.getElementById("input");
+      let socket = new_socket();
+
+      function scrollMsgBox() {
+	      msgBox.scrollTop = msgBox.scrollTopMax;
+      }
+      function addMessage(text) {
+	      msgBox.value += text + '\r\n';
+      }
+      function clearInput() {
+	      input.value = '';
+      }
+      input.addEventListener("keyup", (event) => {
+	      if (event.keyCode === 13) // enter
+		      submit();
+      });
+
+      function new_socket() {
+	      let socket = new WebSocket("ws://localhost:4222");
+	      socket.onmessage = (event) => {
+		      msgBox.value += event.data.trim() + '\r\n';
+		      msgBox.scrollTop = msgBox.scrollTopMax;
+	      };
+
+	      return socket;
+      }
+      
+      function submit() {
+	      if (input.value === '')
+		      return;
+	      if (socket.readyState > 1)
+		      socket = new_socket();
+
+	      let text = input.value;
+	      addMessage(text);
+	      scrollMsgBox();
+	      clearInput();
+	      socket.send(text);
+      }
+    </script>
+  </body>
+</html>

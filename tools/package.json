@@ -1,0 +1,14 @@
+{
+  "name": "websocket-echo",
+  "version": "1.0.0",
+  "description": "WebSocket echo server",
+  "main": "index.js",
+  "repository": "https://github.com/arxitt/flew",
+  "author": "Laurent Cimon",
+  "license": "BSD-2-Clause",
+  "private": false,
+  "type": "module",
+  "dependencies": {
+    "ws": "^8.2.3"
+  }
+}
