@@ -1,9 +1,9 @@
 {
-  "name": "websocket-echo",
+  "name": "websocket-tools",
   "version": "1.0.0",
-  "description": "WebSocket echo server",
-  "main": "index.js",
-  "repository": "https://github.com/arxitt/flew",
+  "description": "WebSocket tools",
+  "main": "echo.js",
+  "repository": "https://github.com/arxitt/mejor",
   "author": "Laurent Cimon",
   "license": "BSD-2-Clause",
   "private": false,
