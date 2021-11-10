@@ -1,14 +1,25 @@
 <!DOCTYPE html>
 <html>
+  <meta charset='utf8'/>
   <header>
     <title>mejor</title>
     <style>
       h1 {
 	  text-align: center;
       }
+
+      table {
+	  width: 100%;
+      }
+
+      #buffers {
+	  border: 2px solid blue;
+	  width: 12vw;
+	  height: 80vh;
+      }
       
       #ChatView {
-	  margin-left: 12%;
+	  margin-left: 2%;
 	  margin-right: 12%;
 	  margin-top: 2%;
 	  margin-bottom: 3%;
@@ -34,19 +45,48 @@
 	  margin: 2px 2px;
 	  padding: 8px 8px;
       }
+
+      input[type=button] {
+	  border: 1px solid white;
+	  background-color: #4400bb;
+	  color: #dddddd;
+	  width: 100%;
+      }
+
+      #add {
+	  background-color: red;
+      }
     </style>
   </header>
   <body>
     <h1>MEJOR</h1>
-    <div id="ChatView">
-      <textarea id="MsgBox" name="MsgBox" disabled></textarea>
-      <input id="input" type="text"/>
-      <input type="submit" onclick="submit()"/>
+    <div id="root">
+      <table>
+	<tr>
+	  <td>
+	    <div id="buffers">
+	      <input id="add" type="button" value="+" onclick="addBuffer()"/>
+	      <div id="bufferButtons">
+		<input type="button" value="buffer1" onclick="switchBuffer('buffer1')"/>
+	      </div>
+	    </div>
+	  </td>
+	  <td>
+	    <div id="ChatView">
+	      <textarea id="MsgBox" name="MsgBox" disabled></textarea>
+	      <input id="input" type="text"/>
+	      <input type="submit" onclick="submit()"/>
+	    </div>
+	  </td>
+      </table>
     </div>
     
     <script>
       let msgBox = document.getElementById("MsgBox"),
-	  input = document.getElementById("input");
+	  input = document.getElementById("input"),
+	  bufferButtons = document.getElementById("bufferButtons");
+      let currentBuffer = 'buffer1';
+      let buffers = {buffer1: msgBox.value};
       let socket = new_socket();
 
       function scrollMsgBox() {
@@ -84,6 +124,25 @@
 	      scrollMsgBox();
 	      clearInput();
 	      socket.send(text);
+      }
+
+      function addBuffer() {
+	      let name = 'buffer' + (Object.keys(buffers).length + 1).toString();
+	      let html = `<input type="button" value="${name}" onclick="switchBuffer('${name}')"/>`;
+	      bufferButtons.innerHTML += html;
+	      console.log(html);
+	      buffers[name] = '';
+	      switchBuffer(name);
+      }
+
+      function switchBuffer(name) {
+	      if (!buffers[name] && buffers[name] !== '')
+		      return;
+
+	      buffers[currentBuffer] = msgBox.value;
+	      msgBox.value = buffers[name];
+	      currentBuffer = name;
+	      input.focus();
       }
     </script>
   </body>
