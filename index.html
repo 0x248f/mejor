@@ -46,14 +46,18 @@
 	  padding: 8px 8px;
       }
 
-      input[type=button] {
+      #bufferButtons input[type=button] {
 	  border: 1px solid white;
 	  background-color: #4400bb;
 	  color: #dddddd;
 	  width: 100%;
       }
 
-      #add {
+      #bufferButtons.active input[type=button] {
+	  background-color: green;
+      }
+
+      #bufferButtons.serverButton input[type=button] {
 	  background-color: red;
       }
     </style>
@@ -65,9 +69,7 @@
 	<tr>
 	  <td>
 	    <div id="buffers">
-	      <input id="add" type="button" value="+" onclick="addBuffer()"/>
 	      <div id="bufferButtons">
-		<input type="button" value="buffer1" onclick="switchBuffer('buffer1')"/>
 	      </div>
 	    </div>
 	  </td>
@@ -85,8 +87,11 @@
       let msgBox = document.getElementById("MsgBox"),
 	  input = document.getElementById("input"),
 	  bufferButtons = document.getElementById("bufferButtons");
-      let currentBuffer = 'buffer1';
-      let buffers = {buffer1: msgBox.value};
+      let currentBuffer = ''; // Currently focused buffer name
+      let currentTarget = {server: '', channel: ''}
+      let buffers = {}; // Contains all buffers
+      let channels = {}; // Contains channel lists per server
+      let nick = {}; // Contains the nick for each server
       let socket = new_socket();
 
       function scrollMsgBox() {
@@ -105,12 +110,82 @@
 
       function new_socket() {
 	      let socket = new WebSocket("ws://localhost:4222");
-	      socket.onmessage = (event) => {
-		      msgBox.value += event.data.trim() + '\r\n';
-		      msgBox.scrollTop = msgBox.scrollTopMax;
-	      };
+	      socket.onmessage = processEvent;
 
 	      return socket;
+      }
+
+      function processEvent(event) {
+	      let message = parseMessage(event.data.trim());
+	      if (!message)
+		      return;
+
+	      switch (message.command) {
+	      case 'RECV':
+		      return processRecv(message);
+	      case 'CONNECT':
+		      return processConnect(message);
+	      case 'JOIN':
+		      return processJoin(message);
+	      case 'PART':
+		      return processPart(message);
+	      case 'NICK':
+		      return processNick(message);
+	      }
+      }
+
+      function parseMessage(msg) {
+                let m = text.trim().match(/^([A-Z]+)\s+\'(.+)\'(?:\.(#[^\.\s]+))?(?:\.([^\.\s]+))?(?:\s*\|\s*(.+))?$/);
+                if (m)
+                        return {
+                                'command': m[1],
+                                'server': m[2],
+                                'channel': m[3],
+                                'user': m[4],
+                                'data': m[5]
+                        };
+                else
+                        return null;
+      }
+
+      function processRecv(msg) {
+	      if (!msg.server || !msg.channel)
+		      return;
+
+	      let name = `'${msg.server}'.${msg.channel}`;
+	      let text = msg.user + ': ' + msg.data + \r\n;
+	      if (buffers[name])
+		      buffers[name] += text;
+	      else {
+		      buffers[name] = text;
+		      addChannel(msg.server, msg.channel);
+	      }
+	      if (name === currentBuffer) {
+		      addMessage(text);
+		      scrollMsgBox();
+	      }
+      }
+
+      function processConnect(msg) {
+	      if (msg.server)
+		      addServer(msg.server);
+      }
+
+      function processJoin(msg) {
+	      if (msg.server && msg.channel)
+		      addChannel(msg.server, msg.channel);
+      }
+
+      function processPart(msg) {
+	      if (msg.server && msg.channel)
+		      removeChannel(msg.server, msg.channel);
+      }
+
+      function processNick(msg) {
+	      if (msg.server && msg.user === myNick && msg.data)
+		      nick[msg.server] = data;
+	      else if (msg.server && msg.user && !msg.data)
+		      nick[msg.server] = msg.user;
       }
       
       function submit() {
@@ -120,29 +195,71 @@
 		      socket = new_socket();
 
 	      let text = input.value;
-	      addMessage(text);
+	      socket.send(`SEND ${currentBuffer} | ${text}\r\n`);
+	      addMessage(`${nick[currentTarget.server]}: ${text}`);
 	      scrollMsgBox();
 	      clearInput();
-	      socket.send(text);
       }
 
-      function addBuffer() {
-	      let name = 'buffer' + (Object.keys(buffers).length + 1).toString();
-	      let html = `<input type="button" value="${name}" onclick="switchBuffer('${name}')"/>`;
+      function addServer(name) {
+	      if (document.getElementById(name))
+		      return;
+
+	      let html = `<div id="${name}><input class="serverButton" type="button" value="${name}" onclick="switchBuffer(${name})"/></div>`;
 	      bufferButtons.innerHTML += html;
-	      console.log(html);
 	      buffers[name] = '';
+	      channels[name] = [];
 	      switchBuffer(name);
+      }
+
+      function removeServer(name) {
+	      let serverDiv = document.getElementById(name);
+	      if (serverDiv)
+		      bufferButtons.removeChild(serverDiv);
+      }
+
+      function addChannel(server, channel) {
+	      let serverDiv = document.getElementById(server);
+	      let name = `'${server}'.${channel}`;
+	      if (document.getElementById(name))
+		      return;
+
+	      let html = `<input id="${name}" type="button" value="${channel}" onclick="switchBuffer('${name}')"/>`;
+	      serverDiv.innerHTML += html;
+	      buffers[name] = '';
+	      channels[server].push(channel);
+      }
+
+      function removeChannel(server, channel) {
+	      let name = `'${server}'.${channel}`;
+	      let parent = document.getElementById(server);
+	      let child = document.getElementById(name);
+
+	      if (parent && child)
+		      parent.removeChild(child);
       }
 
       function switchBuffer(name) {
 	      if (!buffers[name] && buffers[name] !== '')
 		      return;
 
-	      buffers[currentBuffer] = msgBox.value;
-	      msgBox.value = buffers[name];
-	      currentBuffer = name;
-	      input.focus();
+	      let m = name.match(/^\'(.+)\'\.(#[^\.\s]+)$/)
+	      if (m)
+		      currentTarget = {'server': m[1], 'channel': m[2]};
+	      else
+		      currentTarget = {'server': name};
+
+	      if (currentBuffer) {
+		      buffers[currentBuffer] = msgBox.value;
+		      bufferButtons[currentBuffer].className = '';
+	      }
+
+	      if (buffers[name] && bufferButtons[name]) {
+		      msgBox.value = buffers[name];
+		      bufferButtons[name].className = 'active';
+		      currentBuffer = name;
+		      input.focus();
+	      }
       }
     </script>
   </body>
