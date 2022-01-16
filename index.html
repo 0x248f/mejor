@@ -53,11 +53,11 @@
 	  width: 100%;
       }
 
-      #bufferButtons.active input[type=button] {
+      #bufferButtons input[type=button].active {
 	  background-color: green;
       }
 
-      #bufferButtons.serverButton input[type=button] {
+      #bufferButtons input[type=button].serverButton {
 	  background-color: red;
       }
     </style>
@@ -75,6 +75,7 @@
 	  </td>
 	  <td>
 	    <div id="ChatView">
+	      <div id="currentBuffer"></div>
 	      <textarea id="MsgBox" name="MsgBox" disabled></textarea>
 	      <input id="input" type="text"/>
 	      <input type="submit" onclick="submit()"/>
@@ -88,7 +89,6 @@
 	  input = document.getElementById("input"),
 	  bufferButtons = document.getElementById("bufferButtons");
       let currentBuffer = ''; // Currently focused buffer name
-      let currentTarget = {server: '', channel: ''}
       let buffers = {}; // Contains all buffers
       let channels = {}; // Contains channel lists per server
       let nick = {}; // Contains the nick for each server
@@ -98,7 +98,7 @@
 	      msgBox.scrollTop = msgBox.scrollTopMax;
       }
       function addMessage(text) {
-	      msgBox.value += text + '\r\n';
+	      msgBox.value += text.trim() + '\r\n';
       }
       function clearInput() {
 	      input.value = '';
@@ -116,9 +116,11 @@
       }
 
       function processEvent(event) {
-	      let message = parseMessage(event.data.trim());
+	      let message = parseMessage(event.data);
 	      if (!message)
 		      return;
+
+	      console.log(message);
 
 	      switch (message.command) {
 	      case 'RECV':
@@ -134,8 +136,8 @@
 	      }
       }
 
-      function parseMessage(msg) {
-                let m = text.trim().match(/^([A-Z]+)\s+\'(.+)\'(?:\.(#[^\.\s]+))?(?:\.([^\.\s]+))?(?:\s*\|\s*(.+))?$/);
+      function parseMessage(text) {
+                let m = text.trim().match(/^([A-Z]+)\s+(?:\'(.+)\')?(?:\.?(#[^\.\s]+))?(?:\.?([^\.\s]+))?(?:\s*\|\s*(.+))?$/);
                 if (m)
                         return {
                                 'command': m[1],
@@ -148,13 +150,29 @@
                         return null;
       }
 
+      function createMessage(msg) {
+	      let text = msg.command;
+	      if (text && msg.server) {
+		      text += ` '${msg.server}'`;
+		      if (msg.channel)
+			      text += `.${msg.channel}`;
+		      if (msg.user)
+			      text += `.${msg.user}`;
+		      if (msg.data)
+			      text += ` | ${msg.data}`;
+		      text += "\r\n";
+	      }
+
+	      return text;
+      }
+
       function processRecv(msg) {
 	      if (!msg.server || !msg.channel)
 		      return;
 
-	      let name = `'${msg.server}'.${msg.channel}`;
-	      let text = msg.user + ': ' + msg.data + \r\n;
-	      if (buffers[name])
+	      let name = `${msg.server}.${msg.channel}`;
+	      let text = `${msg.user}: ${msg.data}\r\n`;
+	      if (buffers[name] || buffers[name] === '')
 		      buffers[name] += text;
 	      else {
 		      buffers[name] = text;
@@ -177,12 +195,20 @@
       }
 
       function processPart(msg) {
-	      if (msg.server && msg.channel)
+	      if (msg.server && msg.channel && (!msg.user || msg.user === nick[msg.server]))
 		      removeChannel(msg.server, msg.channel);
+	      else if (msg.server && msg.channel && msg.user) {
+		      let text = `PART ${msg.user} (${msg.data})`;
+		      let name = `${msg.server}.${msg.channel}`
+		      if (currentBuffer === name)
+			      addMessage(text);
+		      if (buffer[name] || buffer[name] === '')
+			      buffer[name] += text + '\r\n';
+	      }
       }
 
       function processNick(msg) {
-	      if (msg.server && msg.user === myNick && msg.data)
+	      if (msg.server && msg.user === nick[msg.server] && msg.data)
 		      nick[msg.server] = data;
 	      else if (msg.server && msg.user && !msg.data)
 		      nick[msg.server] = msg.user;
@@ -195,8 +221,26 @@
 		      socket = new_socket();
 
 	      let text = input.value;
-	      socket.send(`SEND ${currentBuffer} | ${text}\r\n`);
-	      addMessage(`${nick[currentTarget.server]}: ${text}`);
+	      let words = currentBuffer.split('.');
+	      let server = words[0], channel = words[1];
+	      if (channel && text[0] === '%') {
+		      let msg = `TOJESI '${server}'.${channel} | ${text}\r\n`;
+		      console.log('Sending to jesi: ' + msg);
+		      socket.send(msg);
+	      } else if (channel) {
+		      socket.send(`SEND '${server}'.${channel} | ${text}\r\n`);
+		      //addMessage(`${nick[server]}: ${text}`);
+	      } else if (server) {
+		      let msg = parseMessage(text);
+		      if (msg) {
+			      msg.server = server;
+			      msgText = createMessage(msg);
+			      console.log(`socket <-- ${msgText}`);
+			      socket.send(msgText);
+			      addMessage(`<-- ${text}`);
+		      }
+	      }
+
 	      scrollMsgBox();
 	      clearInput();
       }
@@ -205,7 +249,7 @@
 	      if (document.getElementById(name))
 		      return;
 
-	      let html = `<div id="${name}><input class="serverButton" type="button" value="${name}" onclick="switchBuffer(${name})"/></div>`;
+	      let html = `<div id="${name}"><input class="serverButton" type="button" value="${name}" onclick="switchBuffer('${name}')"/></div>`;
 	      bufferButtons.innerHTML += html;
 	      buffers[name] = '';
 	      channels[name] = [];
@@ -220,8 +264,8 @@
 
       function addChannel(server, channel) {
 	      let serverDiv = document.getElementById(server);
-	      let name = `'${server}'.${channel}`;
-	      if (document.getElementById(name))
+	      let name = `${server}.${channel}`;
+	      if (!serverDiv || document.getElementById(name))
 		      return;
 
 	      let html = `<input id="${name}" type="button" value="${channel}" onclick="switchBuffer('${name}')"/>`;
@@ -231,7 +275,7 @@
       }
 
       function removeChannel(server, channel) {
-	      let name = `'${server}'.${channel}`;
+	      let name = `${server}.${channel}`;
 	      let parent = document.getElementById(server);
 	      let child = document.getElementById(name);
 
@@ -240,24 +284,18 @@
       }
 
       function switchBuffer(name) {
-	      if (!buffers[name] && buffers[name] !== '')
-		      return;
-
-	      let m = name.match(/^\'(.+)\'\.(#[^\.\s]+)$/)
-	      if (m)
-		      currentTarget = {'server': m[1], 'channel': m[2]};
-	      else
-		      currentTarget = {'server': name};
-
 	      if (currentBuffer) {
 		      buffers[currentBuffer] = msgBox.value;
-		      bufferButtons[currentBuffer].className = '';
+		      document.getElementById(currentBuffer).className = '';
 	      }
 
-	      if (buffers[name] && bufferButtons[name]) {
+	      if (buffers[name] || buffers[name] === '') {
+		      let button = document.getElementById(name);
 		      msgBox.value = buffers[name];
-		      bufferButtons[name].className = 'active';
+		      if (!button.className)
+			      button.className = 'active';
 		      currentBuffer = name;
+		      document.getElementById('currentBuffer').innerHTML = `<p>${currentBuffer}</p>`;
 		      input.focus();
 	      }
       }
