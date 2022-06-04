@@ -11,7 +11,9 @@ function scrollMsgBox() {
 	msgBox.scrollTop = msgBox.scrollTopMax;
 }
 function addMessage(text) {
-	msgBox.value += text.trim() + '\r\n';
+        let date = new Date();
+        let newLine = '[' + date.getHours() + ':' + date.getMinutes() + '] ' + text.trim() + '\r\n';
+	msgBox.value += newLine;
 }
 function clearInput() {
 	input.value = '';
@@ -31,7 +33,7 @@ function new_socket() {
 function processEvent(event) {
 	let message = parseMessage(event.data);
 	if (!message)
-		return;
+		return null;
 
 	console.log(message);
 
@@ -112,7 +114,7 @@ function processPart(msg) {
 		removeChannel(msg.server, msg.channel);
 	else if (msg.server && msg.channel && msg.user) {
 		let text = `PART ${msg.user} (${msg.data})`;
-		let name = `${msg.server}.${msg.channel}`
+		let name = `${msg.server}.${msg.channel}`;
 		if (currentBuffer === name)
 			addMessage(text);
 		if (buffer[name] || buffer[name] === '')
